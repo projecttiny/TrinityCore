@@ -145,39 +145,15 @@ public:
 						dragonspireRuneAI.push_back(ai);
 						break;
 				case GO_EMBERSEER_RUNE_1:
-					go_emberseerrunes[0] = go->GetGUID();
-					if (GetBossState(DATA_PYROGAURD_EMBERSEER) == DONE)
-						HandleGameObject(ObjectGuid::Empty, false, go);
-					break;
 				case GO_EMBERSEER_RUNE_2:
-					go_emberseerrunes[1] = go->GetGUID();
-					if (GetBossState(DATA_PYROGAURD_EMBERSEER) == DONE)
-						HandleGameObject(ObjectGuid::Empty, false, go);
-					break;
 				case GO_EMBERSEER_RUNE_3:
-					go_emberseerrunes[2] = go->GetGUID();
-					if (GetBossState(DATA_PYROGAURD_EMBERSEER) == DONE)
-						HandleGameObject(ObjectGuid::Empty, false, go);
-					break;
 				case GO_EMBERSEER_RUNE_4:
-					go_emberseerrunes[3] = go->GetGUID();
-					if (GetBossState(DATA_PYROGAURD_EMBERSEER) == DONE)
-						HandleGameObject(ObjectGuid::Empty, false, go);
-					break;
 				case GO_EMBERSEER_RUNE_5:
-					go_emberseerrunes[4] = go->GetGUID();
-					if (GetBossState(DATA_PYROGAURD_EMBERSEER) == DONE)
-						HandleGameObject(ObjectGuid::Empty, false, go);
-					break;
 				case GO_EMBERSEER_RUNE_6:
-					go_emberseerrunes[5] = go->GetGUID();
-					if (GetBossState(DATA_PYROGAURD_EMBERSEER) == DONE)
-						HandleGameObject(ObjectGuid::Empty, false, go);
-					break;
 				case GO_EMBERSEER_RUNE_7:
-					go_emberseerrunes[6] = go->GetGUID();
-					if (GetBossState(DATA_PYROGAURD_EMBERSEER) == DONE)
-						HandleGameObject(ObjectGuid::Empty, false, go);
+					guidMap[go->GetEntry()] = go->GetGUID();
+					HandleGameObject(ObjectGuid::Empty, true, go);
+					go->SetGoState(GOState::GO_STATE_READY); //should be disabled until Embeerseer encounter starts
 					break;
 				case GO_PORTCULLIS_ACTIVE:
 					guidMap[go->GetEntry()] = go->GetGUID();
@@ -257,9 +233,9 @@ public:
 					if (data == AREATRIGGER_DRAGONSPIRE_HALL)
 					{
 						//If the room is cleared we don't need to do anything
-						if (GetBossState(DATA_DRAGONSPIRE_ROOM) != DONE && (eventFlags & BlackrockSpireEventFlags::DRAGONSPIRE_RUNE_HALL_STARTED) == 0)
+						if (GetBossState(DATA_DRAGONSPIRE_ROOM) != DONE && (eventFlags & BlackrockSpireEventFlags::DRAGONSPIRE_RUNE_HALL_STARTED) == 0) //second condition prevents uneeded events from being schedules just because someone continues to trigger
 						{
-							//prevents uneeded events from being schedules just because someone continues to trigger
+							
 							eventFlags = (BlackrockSpireEventFlags)(eventFlags | BlackrockSpireEventFlags::DRAGONSPIRE_RUNE_HALL_STARTED);
 
 							//First indicate that the event has started
@@ -340,7 +316,6 @@ public:
 
 	bool OnTrigger(Player* player, const AreaTriggerEntry* /*at*/) override
 	{
-		Beep(750, 500);
 		if (player && player->IsAlive())
 		{
 			if (InstanceScript* instance = player->GetInstanceScript())
