@@ -53,7 +53,7 @@ enum Spells
 enum Events
 {
 	// Respawn
-	EVENT_RESPAWN                   = 1,
+	EVENT_RESPAWN                   = 1,	
 	// Pre fight
 	EVENT_PRE_FIGHT_1               = 2,
 	EVENT_PRE_FIGHT_2               = 3,
@@ -65,7 +65,10 @@ enum Events
 	EVENT_FIRE_SHIELD               = 7,
 	// Make sure all players have aura from altar
 	EVENT_PLAYER_CHECK              = 8,
-	EVENT_ENTER_COMBAT              = 9
+	EVENT_ENTER_COMBAT              = 9,
+
+	//Monitors if the incarcerators wiped the raid.
+	EVENT_MONITOR_COMBAT_STATUS = 10
 };
 
 class boss_pyroguard_emberseer : public CreatureScript
@@ -212,6 +215,9 @@ public:
 					{
 						case EVENT_RESPAWN:
 						{
+							//reset the runes.
+							UpdateRunes(GOState::GO_STATE_READY);
+
 							// Respawn all Blackhand Incarcerators
 							std::list<Creature*> creatureList;
 							GetCreatureListWithEntryInGrid(creatureList, me, NPC_BLACKHAND_INCARCERATOR, 35.0f);
@@ -220,8 +226,11 @@ public:
 								{
 									if (!creature->IsAlive())
 										creature->Respawn();
+									else
+										creature->AI()->Reset();
+									
 
-									creature->AI()->SetData(1, 1);
+									creature->AI()->SetData(1, 2);
 								}
 							me->AddAura(SPELL_ENCAGED_EMBERSEER, me);
 							instance->SetBossState(DATA_PYROGAURD_EMBERSEER, NOT_STARTED);
@@ -262,14 +271,42 @@ public:
 
 							if (_hasAura)
 							{
+								//Schedule combat monitor
+								events.ScheduleEvent(EVENT_MONITOR_COMBAT_STATUS, 3000);
 								events.ScheduleEvent(EVENT_PRE_FIGHT_1, 1000);
 								instance->SetBossState(DATA_PYROGAURD_EMBERSEER, IN_PROGRESS);
 							}
 							break;
 						}
 						case EVENT_ENTER_COMBAT:
-							AttackStart(me->SelectNearestPlayer(30.0f));
+							//Cancel monitor event
+							events.CancelEvent(EVENT_MONITOR_COMBAT_STATUS);
+
+							//This handles reseting if Emberseer never entered combat. It also handles the situation where the incarc's wiped the raid
+							//and will reset then.
+							if (Player* nearestPlayer = me->SelectNearestPlayer(30.0f))
+								AttackStart(nearestPlayer);
+							else
+								Reset();
 							break;
+						case EVENT_MONITOR_COMBAT_STATUS:	
+						{
+							//We'll or this to find out if at least one creature is still in combat.
+							bool isEncounterInProgress = false;
+
+							//Check and see if the creatures have stopped fighting.
+							std::list<Creature*> creatureList;
+							GetCreatureListWithEntryInGrid(creatureList, me, NPC_BLACKHAND_INCARCERATOR, 35.0f);
+							for (Creature* creature : creatureList)
+							{
+								isEncounterInProgress = isEncounterInProgress | (creature->IsAlive() && creature->IsInCombat());
+							}
+
+							if (!isEncounterInProgress)//NPCs wiped the raid or they left or something
+								Reset();
+							else
+								events.ScheduleEvent(EVENT_MONITOR_COMBAT_STATUS, Seconds(5)); //schedule to keep monitoring.
+						}
 						default:
 							break;
 					}
@@ -344,9 +381,7 @@ public:
 
 		void Reset() override
 		{
-			me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC|UNIT_FLAG_IMMUNE_TO_NPC);
-			if (Creature* Emberseer = me->FindNearestCreature(NPC_PYROGAURD_EMBERSEER, 30.0f, true))
-				Emberseer->AI()->SetData(1, 3);
+			//do nothing
 		}
 
 		void JustDied(Unit* /*killer*/) override
@@ -364,7 +399,10 @@ public:
 			}
 
 			if (data == 1 && value == 2)
+			{
+				me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC | UNIT_FLAG_IMMUNE_TO_NPC);
 				_events.ScheduleEvent(EVENT_ENCAGED_EMBERSEER, 1000);
+			}
 		}
 
 		void EnterCombat(Unit* /*who*/) override
@@ -403,7 +441,9 @@ public:
 							if (me->GetPositionX() == me->GetHomePosition().GetPositionX())
 								if (!me->HasAura(SPELL_ENCAGE_EMBERSEER))
 									if (Creature* Emberseer = me->FindNearestCreature(NPC_PYROGAURD_EMBERSEER, 30.0f, true))
+									{
 										DoCast(Emberseer, SPELL_ENCAGE_EMBERSEER);
+									}	
 							break;
 
 						}
