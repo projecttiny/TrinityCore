@@ -30,6 +30,12 @@ enum Text
 	YELL_FREE_OF_BONDS              = 3
 };
 
+enum IncarceratorState
+{
+	STATE_IS_READY_TO_BEGIN_PREEVENT = 0,
+	STATE_IS_IN_COMBAT = 1
+};
+
 enum Spells
 {
 	SPELL_ENCAGED_EMBERSEER         = 15282, // Self on spawn
@@ -53,22 +59,23 @@ enum Spells
 enum Events
 {
 	// Respawn
-	EVENT_RESPAWN                   = 1,	
+	PRE_EVENT_RESPAWN               = 1,
+	EVENT_RESTART                   = 2,
 	// Pre fight
-	EVENT_PRE_FIGHT_1               = 2,
-	EVENT_PRE_FIGHT_2               = 3,
+	EVENT_PRE_FIGHT_1               = 3,
+	EVENT_PRE_FIGHT_2               = 4,
 	// Combat
-	EVENT_FIRENOVA                  = 4,
-	EVENT_FLAMEBUFFET               = 5,
-	EVENT_PYROBLAST                 = 6,
+	EVENT_FIRENOVA                  = 5,
+	EVENT_FLAMEBUFFET               = 6,
+	EVENT_PYROBLAST                 = 7,
 	// Hack due to trigger spell not in dbc
-	EVENT_FIRE_SHIELD               = 7,
+	EVENT_FIRE_SHIELD               = 8,
 	// Make sure all players have aura from altar
-	EVENT_PLAYER_CHECK              = 8,
-	EVENT_ENTER_COMBAT              = 9,
+	EVENT_PLAYER_CHECK              = 9,
+	EVENT_ENTER_COMBAT              = 10,
 
 	//Monitors if the incarcerators wiped the raid.
-	EVENT_MONITOR_COMBAT_STATUS = 10
+	EVENT_MONITOR_COMBAT_STATUS = 11
 };
 
 class boss_pyroguard_emberseer : public CreatureScript
@@ -89,9 +96,9 @@ public:
 			me->RemoveAura(SPELL_EMBERSEER_FULL_STRENGTH);
 			me->RemoveAura(SPELL_EMBERSEER_GROWING);
 			me->RemoveAura(SPELL_EMBERSEER_GROWING_TRIGGER);
-			events.ScheduleEvent(EVENT_RESPAWN, 5000);
+			events.ScheduleEvent(PRE_EVENT_RESPAWN, 1000);
 			// Hack for missing trigger spell
-			events.ScheduleEvent(EVENT_FIRE_SHIELD, 3000);
+			events.ScheduleEvent(EVENT_FIRE_SHIELD, 500);
 
 			// Open doors on reset
 			if (instance->GetBossState(DATA_PYROGAURD_EMBERSEER) == IN_PROGRESS)
@@ -213,7 +220,7 @@ public:
 				{
 					switch (eventId)
 					{
-						case EVENT_RESPAWN:
+						case PRE_EVENT_RESPAWN:
 						{
 							//reset the runes.
 							UpdateRunes(GOState::GO_STATE_READY);
@@ -223,17 +230,19 @@ public:
 							GetCreatureListWithEntryInGrid(creatureList, me, NPC_BLACKHAND_INCARCERATOR, 35.0f);
 							for (std::list<Creature*>::iterator itr = creatureList.begin(); itr != creatureList.end(); ++itr)
 								if (Creature* creature = *itr)
-								{
+								{	
 									if (!creature->IsAlive())
 										creature->Respawn();
 									else
 										creature->AI()->Reset();
-									
 
 									creature->AI()->SetData(1, 2);
 								}
+
 							me->AddAura(SPELL_ENCAGED_EMBERSEER, me);
 							instance->SetBossState(DATA_PYROGAURD_EMBERSEER, NOT_STARTED);
+
+							//schedule 
 							break;
 						}
 						case EVENT_PRE_FIGHT_1:
@@ -261,6 +270,17 @@ public:
 							break;
 						case EVENT_PLAYER_CHECK:
 						{
+							//Check to see that you're being channeled on by every NPC in the pre-event
+							std::list<Creature*> creatureList;
+							GetCreatureListWithEntryInGrid(creatureList, me, NPC_BLACKHAND_INCARCERATOR, 35.0f);
+							for (std::list<Creature*>::iterator itr = creatureList.begin(); itr != creatureList.end(); ++itr)
+								if (Creature* creature = *itr)
+								{
+									//If they aren't ready for the preevent we should wait
+									if (!creature->AI()->GetData(0) == IncarceratorState::STATE_IS_READY_TO_BEGIN_PREEVENT)
+										return;
+								}
+
 							// Check to see if all players in instance have aura SPELL_EMBERSEER_START before starting event
 							bool _hasAura = true;
 							Map::PlayerList const &players = me->GetMap()->GetPlayers();
@@ -292,17 +312,18 @@ public:
 						case EVENT_MONITOR_COMBAT_STATUS:	
 						{
 							//We'll or this to find out if at least one creature is still in combat.
-							bool isEncounterInProgress = false;
+							bool preventEncounterHasFailed = false;
 
 							//Check and see if the creatures have stopped fighting.
 							std::list<Creature*> creatureList;
 							GetCreatureListWithEntryInGrid(creatureList, me, NPC_BLACKHAND_INCARCERATOR, 35.0f);
 							for (Creature* creature : creatureList)
 							{
-								isEncounterInProgress = isEncounterInProgress | (creature->IsAlive() && creature->IsInCombat());
+								//if a creature is alive but not in combat then the pre-event encounter was failed.
+								preventEncounterHasFailed = preventEncounterHasFailed | (creature->IsAlive() && !creature->IsInCombat());
 							}
 
-							if (!isEncounterInProgress)//NPCs wiped the raid or they left or something
+							if (preventEncounterHasFailed)//NPCs wiped the raid or they left or something
 								Reset();
 							else
 								events.ScheduleEvent(EVENT_MONITOR_COMBAT_STATUS, Seconds(5)); //schedule to keep monitoring.
@@ -319,7 +340,7 @@ public:
 			if (me->HasUnitState(UNIT_STATE_CASTING))
 				return;
 
-			while (uint32 eventId = events.ExecuteEvent())
+            while (uint32 eventId = events.ExecuteEvent())
 			{
 				switch (eventId)
 				{
@@ -337,7 +358,8 @@ public:
 						break;
 					case EVENT_PYROBLAST:
 						if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 100, true))
-							DoCast(target, SPELL_PYROBLAST);
+							//must use trigger. Creature has no mana.
+							me->CastSpell(target, SPELL_PYROBLAST, true);
 						events.ScheduleEvent(EVENT_PYROBLAST, 15000);
 						break;
 					default:
@@ -379,34 +401,57 @@ public:
 	{
 		npc_blackhand_incarceratorAI(Creature* creature) : ScriptedAI(creature) { }
 
-		void Reset() override
+		void JustDied(Unit* /*killer*/) override 
 		{
-			//do nothing
+			//Despawn the unit shortly after death. If we wait too long it'll mess up a reset
+			me->DespawnOrUnsummon(2000);
 		}
 
-		void JustDied(Unit* /*killer*/) override
+		void InitializeAI() override
 		{
-			me->DespawnOrUnsummon(10000);
+			ScriptedAI::InitializeAI();
+
+			currentState = IncarceratorState::STATE_IS_READY_TO_BEGIN_PREEVENT;
+		}
+
+		uint32 GetData(uint32 /*id = 0*/) const override
+		{
+			return currentState;
+		}
+
+		void JustReachedHome() override
+		{
+			//When the creature resets back to the rune we should restart engage
+			SetData(1, 2);
 		}
 
 		void SetData(uint32 data, uint32 value) override
 		{
 			if (data == 1 && value == 1)
 			{
-				me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC|UNIT_FLAG_IMMUNE_TO_NPC);
+				me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC|UNIT_FLAG_IMMUNE_TO_NPC|UNIT_FLAG_NOT_SELECTABLE|UNIT_FLAG_NON_ATTACKABLE);
 				me->InterruptSpell(CURRENT_CHANNELED_SPELL);
 				_events.CancelEvent(EVENT_ENCAGED_EMBERSEER);
+
+				
+				//Engage the closest target
+				if (Unit* closestTarget = me->SelectNearestPlayer(40.0f))
+				{
+					me->CombatStart(closestTarget, true);
+				}
 			}
 
 			if (data == 1 && value == 2)
 			{
-				me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC | UNIT_FLAG_IMMUNE_TO_NPC);
-				_events.ScheduleEvent(EVENT_ENCAGED_EMBERSEER, 1000);
+				me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC | UNIT_FLAG_IMMUNE_TO_NPC | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_NON_ATTACKABLE);
+				_events.ScheduleEvent(EVENT_ENCAGED_EMBERSEER, 5000);
 			}
 		}
 
 		void EnterCombat(Unit* /*who*/) override
 		{
+			currentState = IncarceratorState::STATE_IS_IN_COMBAT;
+
 			// Used to close doors
 			if (Creature* Emberseer = me->FindNearestCreature(NPC_PYROGAURD_EMBERSEER, 30.0f, true))
 				Emberseer->AI()->SetData(1, 2);
@@ -421,7 +466,7 @@ public:
 			}
 
 			_events.ScheduleEvent(EVENT_STRIKE, urand(8000, 16000));
-			_events.ScheduleEvent(EVENT_ENCAGE, urand(10000, 20000));
+			_events.ScheduleEvent(EVENT_ENCAGE, urand(3000, 4000)); //UBRS video showed encase being cast very soon into the encounter
 		}
 
 		void UpdateAI(uint32 diff) override
@@ -438,12 +483,13 @@ public:
 					{
 						case EVENT_ENCAGED_EMBERSEER:
 						{
-							if (me->GetPositionX() == me->GetHomePosition().GetPositionX())
-								if (!me->HasAura(SPELL_ENCAGE_EMBERSEER))
-									if (Creature* Emberseer = me->FindNearestCreature(NPC_PYROGAURD_EMBERSEER, 30.0f, true))
-									{
-										DoCast(Emberseer, SPELL_ENCAGE_EMBERSEER);
-									}	
+							currentState = IncarceratorState::STATE_IS_READY_TO_BEGIN_PREEVENT;
+
+							if (!me->HasAura(SPELL_ENCAGE_EMBERSEER))
+								if (Creature* Emberseer = me->FindNearestCreature(NPC_PYROGAURD_EMBERSEER, 30.0f, true))
+								{
+									DoCast(Emberseer, SPELL_ENCAGE_EMBERSEER);
+								}
 							break;
 
 						}
@@ -458,24 +504,30 @@ public:
 			{
 				switch (eventId)
 				{
-					case EVENT_STRIKE:
-						DoCastVictim(SPELL_STRIKE, true);
-						_events.ScheduleEvent(EVENT_STRIKE, urand(14000, 23000));
-						break;
-					case EVENT_ENCAGE:
-						DoCast(SelectTarget(SELECT_TARGET_RANDOM, 0, 100, true), EVENT_ENCAGE, true);
-						_events.ScheduleEvent(EVENT_ENCAGE, urand(6000, 12000));
+				case EVENT_STRIKE:
+					DoCastVictim(SPELL_STRIKE, true);
+					_events.ScheduleEvent(EVENT_STRIKE, urand(14000, 23000));
+					break;
+				case EVENT_ENCAGE:
+					//Don't cast encage on something already encaged
+					if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, [&](Unit* u) { return u && !u->HasAura(SPELL_ENCAGE); }))
+						DoCast(target, SPELL_ENCAGE, true);
+					_events.ScheduleEvent(EVENT_ENCAGE, urand(6000, 12000));
 						break;
 					default:
 						break;
 				}
 			}
 
+			if (me->HasUnitState(UNIT_STATE_CASTING))
+				return;
+
 			DoMeleeAttackIfReady();
 		}
 
 		private:
 			EventMap _events;
+			IncarceratorState currentState;
 	};
 
 	CreatureAI* GetAI(Creature* creature) const override
