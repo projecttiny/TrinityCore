@@ -175,6 +175,15 @@ public:
         {
             _Reset();
             gythEvent = false;
+            
+            //Reset victor and rend's position
+            if (Creature* victor = ObjectAccessor::GetCreature(*me, victorGUID))
+            {
+                victor->Respawn();
+                victor->SetPosition(victor->GetHomePosition()); //reset his position too otherwise he'll be standing on the ledge
+            }
+               
+
             victorGUID.Clear();
             portcullisGUID.Clear();
         }
@@ -191,6 +200,19 @@ public:
         {
             me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC);
             DoZoneInCombat();
+        }
+
+        //Called when a creature in a summon group is despawned. This will include Gyth
+        void SummonedCreatureDespawn(Creature* summon) override
+        {
+            //Despawning if the creature is dead is fine
+
+            //Check if they're alive during despawn. This would mean they weren't engaged and the event should be failed
+            if (summon->IsAlive())
+            {
+                me->Respawn();
+                return;
+            }
         }
 
         void JustDied(Unit* /*killer*/) override
