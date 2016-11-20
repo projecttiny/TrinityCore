@@ -34,7 +34,7 @@ enum BlackrockSpireInstanceEvent
 enum BlackrockSpireEventFlags
 {
 	NONE = 0,
-	DRAGONSPIRE_RUNE_HALL_STARTED = 0 << 0,
+	DRAGONSPIRE_RUNE_HALL_STARTED = 1 << 0,
 	DRAGONSPIRE_RUNE_HALL_COMPLETED = 1 << 0
 };
 
