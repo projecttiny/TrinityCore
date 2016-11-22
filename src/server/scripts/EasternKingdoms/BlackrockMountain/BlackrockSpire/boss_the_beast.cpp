@@ -25,6 +25,8 @@ enum Spells
     SPELL_FLAMEBREAK                = 16785,
     SPELL_IMMOLATE                  = 20294,
     SPELL_TERRIFYINGROAR            = 14100,
+    SPELL_BESERKER_CHARGE           = 16636,
+    SPELL_FIREBALL                  = 16788
 };
 
 enum Events
@@ -32,6 +34,8 @@ enum Events
     EVENT_FLAME_BREAK              = 1,
     EVENT_IMMOLATE                 = 2,
     EVENT_TERRIFYING_ROAR          = 3,
+    EVENT_BERSERKER_CHARGE         = 4,
+    EVENT_FIRE_BALL                = 5
 };
 
 class boss_the_beast : public CreatureScript
@@ -56,9 +60,11 @@ public:
         void EnterCombat(Unit* /*who*/) override
         {
             _EnterCombat();
-            events.ScheduleEvent(EVENT_FLAME_BREAK,     12 * IN_MILLISECONDS);
-            events.ScheduleEvent(EVENT_IMMOLATE,         3 * IN_MILLISECONDS);
-            events.ScheduleEvent(EVENT_TERRIFYING_ROAR, 23 * IN_MILLISECONDS);
+            events.ScheduleEvent(EVENT_BERSERKER_CHARGE, Seconds(2)); //according to a 2006 video he used the charge 2 seconds in
+            events.ScheduleEvent(EVENT_FIRE_BALL, Seconds(6));
+            events.ScheduleEvent(EVENT_FLAME_BREAK, Seconds(10));
+            events.ScheduleEvent(EVENT_IMMOLATE, Seconds(12));
+            events.ScheduleEvent(EVENT_TERRIFYING_ROAR, Seconds(23));
         }
 
         void JustDied(Unit* /*killer*/) override
@@ -82,16 +88,32 @@ public:
                 {
                     case EVENT_FLAME_BREAK:
                         DoCastVictim(SPELL_FLAMEBREAK);
-                        events.ScheduleEvent(EVENT_FLAME_BREAK, 10 * IN_MILLISECONDS);
+                        events.ScheduleEvent(EVENT_FLAME_BREAK, urand(8000, 10000)); //video shows interavals between 8 and 10 seconds.
                         break;
                     case EVENT_IMMOLATE:
-                        if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 100, true))
+                        if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 100, true, -1 * SPELL_IMMOLATE)) //cast immolate on a target without debuff
                             DoCast(target, SPELL_IMMOLATE);
-                        events.ScheduleEvent(EVENT_IMMOLATE, 8 * IN_MILLISECONDS);
+                        events.ScheduleEvent(EVENT_IMMOLATE, Seconds(8));
                         break;
                     case EVENT_TERRIFYING_ROAR:
                         DoCastVictim(SPELL_TERRIFYINGROAR);
-                        events.ScheduleEvent(EVENT_TERRIFYING_ROAR, 20 * IN_MILLISECONDS);
+                        events.ScheduleEvent(EVENT_TERRIFYING_ROAR, Seconds(20));
+                        break;
+                    case EVENT_BERSERKER_CHARGE:
+                        if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 38, true))
+                        {
+                            //randomly charge a target within 38 yards
+                            me->CastSpell(target, SPELL_BESERKER_CHARGE);
+                        }
+                        events.ScheduleEvent(EVENT_BERSERKER_CHARGE, urand(3000, 4500));
+                        break;
+                    case EVENT_FIRE_BALL:
+                        //Videos show he hardcasts it. Don't trigger but ignore mana cost
+                        if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 38, true))
+                        {
+                            me->CastSpell(target, SPELL_FIREBALL, (TriggerCastFlags)(TriggerCastFlags::TRIGGERED_IGNORE_AURA_INTERRUPT_FLAGS | TriggerCastFlags::TRIGGERED_IGNORE_POWER_AND_REAGENT_COST));
+                        }
+                        events.ScheduleEvent(EVENT_FIRE_BALL, urand(5000, 7000));
                         break;
                 }
 
