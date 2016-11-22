@@ -65,58 +65,6 @@ enum Misc
     REND_PATH_2                     = 1379681,
 };
 
-/*
-struct Wave
-{
-    uint32 entry;
-    float  x_pos;
-    float  y_pos;
-    float  z_pos;
-    float  o_pos;
-};
-
-static Wave Wave2[]= // 22 sec
-{
-    { 10447, 209.8637f, -428.2729f, 110.9877f, 0.6632251f },
-    { 10442, 209.3122f, -430.8724f, 110.9814f, 2.9147f    },
-    { 10442, 211.3309f, -425.9111f, 111.0006f, 1.727876f  }
-};
-
-static Wave Wave3[]= // 60 sec
-{
-    { 10742, 208.6493f, -424.5787f, 110.9872f, 5.8294f    },
-    { 10447, 203.9482f, -428.9446f, 110.982f,  4.677482f  },
-    { 10442, 203.3441f, -426.8668f, 110.9772f, 4.712389f  },
-    { 10442, 206.3079f, -424.7509f, 110.9943f, 4.08407f   }
-};
-
-static Wave Wave4[]= // 49 sec
-{
-    { 10742, 212.3541f, -412.6826f, 111.0352f, 5.88176f   },
-    { 10447, 212.5754f, -410.2841f, 111.0296f, 2.740167f  },
-    { 10442, 212.3449f, -414.8659f, 111.0348f, 2.356194f  },
-    { 10442, 210.6568f, -412.1552f, 111.0124f, 0.9773844f }
-};
-
-static Wave Wave5[]= // 60 sec
-{
-    { 10742, 210.2188f, -410.6686f, 111.0211f, 5.8294f    },
-    { 10447, 209.4078f, -414.13f,   111.0264f, 4.677482f  },
-    { 10442, 208.0858f, -409.3145f, 111.0118f, 4.642576f  },
-    { 10442, 207.9811f, -413.0728f, 111.0098f, 5.288348f  },
-    { 10442, 208.0854f, -412.1505f, 111.0057f, 4.08407f   }
-};
-
-static Wave Wave6[]= // 27 sec
-{
-    { 10742, 213.9138f, -426.512f,  111.0013f, 3.316126f  },
-    { 10447, 213.7121f, -429.8102f, 110.9888f, 1.413717f  },
-    { 10447, 213.7157f, -424.4268f, 111.009f,  3.001966f  },
-    { 10442, 210.8935f, -423.913f,  111.0125f, 5.969026f  },
-    { 10442, 212.2642f, -430.7648f, 110.9807f, 5.934119f  }
-};
-*/
-
 Position const GythLoc =      { 211.762f,  -397.5885f, 111.1817f,  4.747295f   };
 Position const Teleport1Loc = { 194.2993f, -474.0814f, 121.4505f, -0.01225555f };
 Position const Teleport2Loc = { 216.485f,  -434.93f,   110.888f,  -0.01225555f };
@@ -138,6 +86,7 @@ enum Events
     EVENT_WAVE_4                    = 13,
     EVENT_WAVE_5                    = 14,
     EVENT_WAVE_6                    = 15,
+    EVENT_WAVE_7                    = 33,
     EVENT_WAVES_TEXT_1              = 16,
     EVENT_WAVES_TEXT_2              = 17,
     EVENT_WAVES_TEXT_3              = 18,
@@ -157,6 +106,8 @@ enum Events
     EVENT_MORTAL_STRIKE             = 32,
 };
 
+float waveTimeMultiplier = 1.0f;
+
 class boss_rend_blackhand : public CreatureScript
 {
 public:
@@ -166,31 +117,55 @@ public:
     {
         boss_rend_blackhandAI(Creature* creature) : BossAI(creature, DATA_WARCHIEF_REND_BLACKHAND)
         {
-            gythEvent = false;
             victorGUID.Clear();
             portcullisGUID.Clear();
         }
 
         void Reset() override
         {
-            _Reset();
-            gythEvent = false;
-            
-            //Reset victor and rend's position
-            if (Creature* victor = ObjectAccessor::GetCreature(*me, victorGUID))
+            if (instance->GetBossState(DATA_GYTH) != EncounterState::DONE) //it's a tricky situation when Gyth is dead but Rend is alive.
             {
-                victor->Respawn();
-                victor->SetPosition(victor->GetHomePosition()); //reset his position too otherwise he'll be standing on the ledge
-            }
-               
+                isFinalWave = false;
 
-            victorGUID.Clear();
-            portcullisGUID.Clear();
+                //Reset victor and rend's position
+                if (Creature* victor = ObjectAccessor::GetCreature(*me, victorGUID))
+                {
+                    //reset his position too otherwise he'll be standing on the ledge
+                    victor->SetPosition(victor->GetHomePosition());
+                    victor->AI()->Reset();
+                }
+
+                //Open Event Door
+                if (ObjectGuid door = instance->GetGuidData(GO_PORTCULLIS_ACTIVE))
+                    instance->HandleGameObject(door, true);
+
+
+                summons.DespawnAll();
+                summons.clear();
+            }
+            else
+            {
+                GatherFightObjectGuids();
+
+                //Reset victor and rend's position
+                if (Creature* victor = ObjectAccessor::GetCreature(*me, victorGUID))
+                {
+                    //reset his position too otherwise he'll be standing on the ledge
+                    victor->SetPosition(victor->GetHomePosition());
+                }
+            }
+
+            //We need to despawn waves because a wave could spawn right before a despawn
+            //This would leave the wave walking down threw the event even though the event ended   
+            instance->SetBossState(DATA_WARCHIEF_REND_BLACKHAND, EncounterState::FAIL);
+
+            events.Reset();
         }
 
-        void EnterCombat(Unit* /*who*/) override
+        void EnterCombat(Unit* who) override
         {
-            _EnterCombat();
+            BossAI::EnterCombat(who);
+
             events.ScheduleEvent(EVENT_WHIRLWIND,     urand(13000, 15000));
             events.ScheduleEvent(EVENT_CLEAVE,        urand(15000, 17000));
             events.ScheduleEvent(EVENT_MORTAL_STRIKE, urand(17000, 19000));
@@ -200,6 +175,7 @@ public:
         {
             me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC);
             DoZoneInCombat();
+            instance->SetBossState(DATA_WARCHIEF_REND_BLACKHAND, EncounterState::IN_PROGRESS);
         }
 
         //Called when a creature in a summon group is despawned. This will include Gyth
@@ -210,36 +186,79 @@ public:
             //Check if they're alive during despawn. This would mean they weren't engaged and the event should be failed
             if (summon->IsAlive())
             {
-                me->Respawn();
-                return;
+                //Reset Gyth event
+                instance->SetBossState(DATA_GYTH, EncounterState::FAIL);
+
+                //If we're dead we need to respawn
+                if (!me->IsAlive())
+                {
+                    me->Respawn();
+                    me->SetPosition(me->GetHomePosition());
+                }
+                else
+                    Reset();
             }
         }
+
+        void SummonedCreatureDies(Creature* summon, Unit* /*killer*/) override
+        {
+            summons.Despawn(summon);
+
+            //If this is the final wave and no summons are left alive then it's time to finish the wave event
+            if (isFinalWave && summons.empty())
+            {
+                events.ScheduleEvent(EVENT_WAVES_COMPLETE_TEXT_1, 20000 * waveTimeMultiplier);
+                isFinalWave = false;
+            }
+        }
+
+        void JustSummoned(Creature* summon) override
+        {
+
+            summons.Summon(summon);
+
+            //Don't move if it's Gyth. He's controlled differently
+            if (summon->GetEntry() == NPC_GYTH)
+                return;
+
+            //Make the creature walk to the center of the room.
+            Position summonPosition = summon->GetPosition();
+            summon->SetWalk(true); //make them walk; UBRS reference video indicated that the creatures walk after being spawned
+            summon->GetMotionMaster()->MovePoint(0, summonPosition.GetPositionX() - 80, summonPosition.GetPositionY(), summonPosition.GetPositionZ(), false);
+        }
+
 
         void JustDied(Unit* /*killer*/) override
         {
             _JustDied();
-            if (Creature* victor = me->FindNearestCreature(NPC_LORD_VICTOR_NEFARIUS, 75.0f, true))
+            if (Creature* victor = me->FindNearestCreature(NPC_LORD_VICTOR_NEFARIUS, 150.0f, true))
                 victor->AI()->SetData(1, 2);
         }
 
         void SetData(uint32 type, uint32 data) override
         {
-            if (type == AREATRIGGER && data == AREATRIGGER_BLACKROCK_STADIUM)
+            if (type == AREATRIGGER && data == AREATRIGGER_BLACKROCK_STADIUM) //don't restart if Gyth has died.
             {
-                if (!gythEvent)
+                //Don't restart the event if Gyth is done or inprogress or if Rend has been defeated
+                if (instance->GetBossState(DATA_GYTH) != EncounterState::DONE && instance->GetBossState(DATA_GYTH) != EncounterState::IN_PROGRESS
+                    && instance->GetBossState(DATA_WARCHIEF_REND_BLACKHAND) != EncounterState::DONE)
                 {
-                    gythEvent = true;
+                    instance->SetBossState(DATA_GYTH, EncounterState::IN_PROGRESS);
 
-                    if (Creature* victor = me->FindNearestCreature(NPC_LORD_VICTOR_NEFARIUS, 5.0f, true))
-                        victorGUID = victor->GetGUID();
-
-                    if (GameObject* portcullis = me->FindNearestGameObject(GO_DR_PORTCULLIS, 50.0f))
-                        portcullisGUID = portcullis->GetGUID();
-
+                    GatherFightObjectGuids();
                     events.ScheduleEvent(EVENT_TURN_TO_PLAYER, 0);
                     events.ScheduleEvent(EVENT_START_1, 1000);
                 }
             }
+        }
+
+        void GatherFightObjectGuids()
+        {
+            if (Creature* victor = me->FindNearestCreature(NPC_LORD_VICTOR_NEFARIUS, 50.0f, true))
+                victorGUID = victor->GetGUID();
+
+            if (GameObject* portcullis = me->FindNearestGameObject(GO_DR_PORTCULLIS, 50.0f))
+                portcullisGUID = portcullis->GetGUID();
         }
 
         void MovementInform(uint32 type, uint32 id) override
@@ -262,7 +281,9 @@ public:
 
         void UpdateAI(uint32 diff) override
         {
-            if (gythEvent)
+            //While rend is not in progress then the glyh event is happening.
+            if (instance->GetBossState(DATA_WARCHIEF_REND_BLACKHAND) != EncounterState::IN_PROGRESS
+                && instance->GetBossState(DATA_WARCHIEF_REND_BLACKHAND) != EncounterState::DONE)
             {
                 events.Update(diff);
 
@@ -271,6 +292,10 @@ public:
                     switch (eventId)
                     {
                         case EVENT_START_1:
+                            //Close Event Door
+                            if (ObjectGuid door = instance->GetGuidData(GO_PORTCULLIS_ACTIVE))
+                                instance->HandleGameObject(door, false);
+
                             if (Creature* victor = ObjectAccessor::GetCreature(*me, victorGUID))
                                 victor->AI()->Talk(SAY_NEFARIUS_0);
                             events.ScheduleEvent(EVENT_START_2, 4000);
@@ -286,7 +311,7 @@ public:
                                 victor->AI()->Talk(SAY_NEFARIUS_1);
                             events.ScheduleEvent(EVENT_WAVE_1, 2000);
                             events.ScheduleEvent(EVENT_TURN_TO_REND, 4000);
-                            events.ScheduleEvent(EVENT_WAVES_TEXT_1, 20000);
+                            events.ScheduleEvent(EVENT_WAVES_TEXT_1, 56000 * waveTimeMultiplier);
                             break;
                         case EVENT_TURN_TO_REND:
                             if (Creature* victor = ObjectAccessor::GetCreature(*me, victorGUID))
@@ -325,7 +350,7 @@ public:
                             events.ScheduleEvent(EVENT_TURN_TO_FACING_1, 4000);
                             events.ScheduleEvent(EVENT_WAVES_EMOTE_1, 5000);
                             events.ScheduleEvent(EVENT_WAVE_2, 2000);
-                            events.ScheduleEvent(EVENT_WAVES_TEXT_2, 20000);
+                            events.ScheduleEvent(EVENT_WAVES_TEXT_2, 30000 * waveTimeMultiplier);
                             break;
                         case EVENT_WAVES_TEXT_2:
                             events.ScheduleEvent(EVENT_TURN_TO_PLAYER, 0);
@@ -333,7 +358,7 @@ public:
                                 victor->AI()->Talk(SAY_NEFARIUS_3);
                             events.ScheduleEvent(EVENT_TURN_TO_FACING_1, 4000);
                             events.ScheduleEvent(EVENT_WAVE_3, 2000);
-                            events.ScheduleEvent(EVENT_WAVES_TEXT_3, 20000);
+                            events.ScheduleEvent(EVENT_WAVES_TEXT_3, 50000 * waveTimeMultiplier);
                             break;
                         case EVENT_WAVES_TEXT_3:
                             events.ScheduleEvent(EVENT_TURN_TO_PLAYER, 0);
@@ -341,14 +366,14 @@ public:
                                 victor->AI()->Talk(SAY_NEFARIUS_4);
                             events.ScheduleEvent(EVENT_TURN_TO_FACING_1, 4000);
                             events.ScheduleEvent(EVENT_WAVE_4, 2000);
-                            events.ScheduleEvent(EVENT_WAVES_TEXT_4, 20000);
+                            events.ScheduleEvent(EVENT_WAVES_TEXT_4, 56000 * waveTimeMultiplier);
                             break;
                         case EVENT_WAVES_TEXT_4:
                             Talk(SAY_BLACKHAND_1);
                             events.ScheduleEvent(EVENT_WAVES_EMOTE_2, 4000);
                             events.ScheduleEvent(EVENT_TURN_TO_FACING_3, 8000);
                             events.ScheduleEvent(EVENT_WAVE_5, 2000);
-                            events.ScheduleEvent(EVENT_WAVES_TEXT_5, 20000);
+                            events.ScheduleEvent(EVENT_WAVES_TEXT_5, 56000 * waveTimeMultiplier);
                             break;
                         case EVENT_WAVES_TEXT_5:
                             events.ScheduleEvent(EVENT_TURN_TO_PLAYER, 0);
@@ -356,21 +381,22 @@ public:
                                 victor->AI()->Talk(SAY_NEFARIUS_5);
                             events.ScheduleEvent(EVENT_TURN_TO_FACING_1, 4000);
                             events.ScheduleEvent(EVENT_WAVE_6, 2000);
-                            events.ScheduleEvent(EVENT_WAVES_COMPLETE_TEXT_1, 20000);
+                            //Schedule the final wave
+                            events.ScheduleEvent(EVENT_WAVE_7, 45000 * waveTimeMultiplier);
                             break;
                         case EVENT_WAVES_COMPLETE_TEXT_1:
                             events.ScheduleEvent(EVENT_TURN_TO_PLAYER, 0);
                             if (Creature* victor = ObjectAccessor::GetCreature(*me, victorGUID))
                                 victor->AI()->Talk(SAY_NEFARIUS_6);
                             events.ScheduleEvent(EVENT_TURN_TO_FACING_1, 4000);
-                            events.ScheduleEvent(EVENT_WAVES_COMPLETE_TEXT_2, 13000);
+                            events.ScheduleEvent(EVENT_WAVES_COMPLETE_TEXT_2, 13000 * waveTimeMultiplier);
                             break;
                         case EVENT_WAVES_COMPLETE_TEXT_2:
                             if (Creature* victor = ObjectAccessor::GetCreature(*me, victorGUID))
                                 victor->AI()->Talk(SAY_NEFARIUS_7);
                             Talk(SAY_BLACKHAND_2);
                             events.ScheduleEvent(EVENT_PATH_REND, 1000);
-                            events.ScheduleEvent(EVENT_WAVES_COMPLETE_TEXT_3, 4000);
+                            events.ScheduleEvent(EVENT_WAVES_COMPLETE_TEXT_3, 4000 * waveTimeMultiplier);
                             break;
                         case EVENT_WAVES_COMPLETE_TEXT_3:
                             if (Creature* victor = ObjectAccessor::GetCreature(*me, victorGUID))
@@ -387,46 +413,35 @@ public:
                             break;
                         case EVENT_TELEPORT_1:
                             me->NearTeleportTo(194.2993f, -474.0814f, 121.4505f, -0.01225555f);
-                            events.ScheduleEvent(EVENT_TELEPORT_2, 50000);
+                            events.ScheduleEvent(EVENT_TELEPORT_2, 50000 * waveTimeMultiplier);
                             break;
                         case EVENT_TELEPORT_2:
                             me->NearTeleportTo(216.485f, -434.93f, 110.888f, -0.01225555f);
                             me->SummonCreature(NPC_GYTH, 211.762f, -397.5885f, 111.1817f, 4.747295f);
                             break;
+                        case EVENT_WAVE_2:
                         case EVENT_WAVE_1:
                             if (GameObject* portcullis = me->GetMap()->GetGameObject(portcullisGUID))
                                 portcullis->UseDoorOrButton();
-                            // move wave
-                            break;
-                        case EVENT_WAVE_2:
-                            // spawn wave
-                            if (GameObject* portcullis = me->GetMap()->GetGameObject(portcullisGUID))
-                                portcullis->UseDoorOrButton();
-                            // move wave
-                            break;
-                        case EVENT_WAVE_3:
-                            // spawn wave
-                            if (GameObject* portcullis = me->GetMap()->GetGameObject(portcullisGUID))
-                                portcullis->UseDoorOrButton();
-                            // move wave
-                            break;
-                        case EVENT_WAVE_4:
-                            // spawn wave
-                            if (GameObject* portcullis = me->GetMap()->GetGameObject(portcullisGUID))
-                                portcullis->UseDoorOrButton();
-                            // move wave
+                            me->SummonCreatureGroup(0);
                             break;
                         case EVENT_WAVE_5:
-                            // spawn wave
+                        case EVENT_WAVE_3:
+                        case EVENT_WAVE_4:
                             if (GameObject* portcullis = me->GetMap()->GetGameObject(portcullisGUID))
                                 portcullis->UseDoorOrButton();
-                            // move wave
+                            me->SummonCreatureGroup(1);
                             break;
                         case EVENT_WAVE_6:
-                            // spawn wave
                             if (GameObject* portcullis = me->GetMap()->GetGameObject(portcullisGUID))
                                 portcullis->UseDoorOrButton();
-                            // move wave
+                            me->SummonCreatureGroup(2);
+                            break;
+                        case EVENT_WAVE_7:
+                            isFinalWave = true;
+                            if (GameObject* portcullis = me->GetMap()->GetGameObject(portcullisGUID))
+                                portcullis->UseDoorOrButton();
+                            me->SummonCreatureGroup(3);
                             break;
                         default:
                             break;
@@ -467,7 +482,7 @@ public:
         }
 
         private:
-            bool   gythEvent;
+            bool isFinalWave;
             ObjectGuid victorGUID;
             ObjectGuid portcullisGUID;
     };
@@ -478,7 +493,97 @@ public:
     }
 };
 
+class npc_rendevent_chromatic_handler : public CreatureScript
+{
+    enum HandlerSpells
+    {
+        SPELL_MEND_DRAGON = 16637,
+    };
+
+    enum HandlerEvent
+    {
+        EVENT_CHECK_HEALING = 0,
+    };
+
+public:
+    npc_rendevent_chromatic_handler() : CreatureScript("npc_rendevent_chromatic_handler") { }
+
+    struct npc_rendevent_chromatic_handlerAI : public ScriptedAI
+    {
+        npc_rendevent_chromatic_handlerAI(Creature* creature) : ScriptedAI(creature) { }
+
+        //Called at creature aggro either by MoveInLOS or Attack Start
+        void EnterCombat(Unit* /*victim*/) override 
+        { 
+            events.Reset();
+            events.ScheduleEvent(EVENT_CHECK_HEALING, Seconds(1));
+        }
+
+        void UpdateAI(uint32 diff) override
+        {
+            events.Update(diff);
+
+            if (events.ExecuteEvent() == EVENT_CHECK_HEALING)
+            {
+                if (me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    //if we're not near a healable target cancel the channel
+                    if (!IsNearHealableTarget(NPC_CHROMATIC_DRAGONSPAWN))
+                    {
+                        me->CastStop();
+                    }
+
+                    events.ScheduleEvent(EVENT_CHECK_HEALING, urand(1000, 3000)); //use random to make the action feel less robotic
+                }
+                else
+                {
+                    //If there is a dragonspawn nearby tha needs heals then we should cast
+                    if (IsNearHealableTarget(NPC_CHROMATIC_DRAGONSPAWN))
+                        me->CastSpell(me, SPELL_MEND_DRAGON);
+
+                    events.ScheduleEvent(EVENT_CHECK_HEALING, urand(2000, 5000)); //use random to make the action feel less robotic
+                }
+                    
+            }
+            
+            //If we're not channeling then melee
+            if (!me->HasUnitState(UNIT_STATE_CASTING))
+                DoMeleeAttackIfReady();
+        }
+
+    private:
+        EventMap events;
+
+        bool IsNearHealableTarget(uint32 creatureEntry)
+        {
+            std::vector<Creature*> creatures;
+            creatures.reserve(5); //preallocate for approximately one wave.
+            GetCreatureListWithEntryInGrid(creatures, me, creatureEntry, 15.0f); //should be less than actual range otherwise you get issues
+
+            //originally we did some std::remove erasing for dead targets and then sorted for most damaged. That was costly. Now we do simple linear search
+
+            if (creatures.size() > 0)
+            {
+                for (Creature* creature : creatures)
+                {
+                    //living and damaged only
+                    if (creature->IsAlive() && creature->GetHealth() < creature->GetMaxHealth())
+                        return true;
+                }
+            }
+
+            return false;
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return new npc_rendevent_chromatic_handlerAI(creature);
+    }
+};
+
 void AddSC_boss_rend_blackhand()
 {
     new boss_rend_blackhand();
+    new npc_rendevent_chromatic_handler();
 }

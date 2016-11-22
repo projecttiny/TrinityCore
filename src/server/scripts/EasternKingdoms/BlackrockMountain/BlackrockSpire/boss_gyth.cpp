@@ -43,7 +43,8 @@ enum Events
     EVENT_FLAME_BREATH              = 3,
     EVENT_KNOCK_AWAY                = 4,
     EVENT_SUMMONED_1                = 5,
-    EVENT_SUMMONED_2                = 6
+    EVENT_SUMMONED_2                = 6,
+    EVENT_DESPAWN_ON_NO_ENEMY_FOUND = 7,
 };
 
 class boss_gyth : public CreatureScript
@@ -53,31 +54,59 @@ public:
 
     struct boss_gythAI : public BossAI
     {
-        boss_gythAI(Creature* creature) : BossAI(creature, DATA_GYTH)
-        {
-            Initialize();
-        }
+        bool SummonedRend;
+        bool isJustSpawned;
 
-        void Initialize()
+        boss_gythAI(Creature* creature) : BossAI(creature, DATA_GYTH) { }
+
+        void InitializeAI() override
         {
             SummonedRend = false;
+            isJustSpawned = false;
         }
 
-        bool SummonedRend;
-
-        void Reset() override
+        void EnterEvadeMode(EvadeReason why) override
         {
-            Initialize();
-            if (instance->GetBossState(DATA_GYTH) == IN_PROGRESS)
+            //reset the event if it's inprogress and if Gyth evaded because it couldn't find players.
+            if (instance->GetBossState(DATA_GYTH) == IN_PROGRESS && why == EvadeReason::EVADE_REASON_NO_HOSTILES)
             {
-                instance->SetBossState(DATA_GYTH, DONE);
-                me->DespawnOrUnsummon();
+                instance->SetBossState(DATA_GYTH, EncounterState::FAIL); //if a reset happens during the fight then we failed
+
+                //Only despawn and reset if rend isn't dead
+                if (instance->GetBossState(DATA_WARCHIEF_REND_BLACKHAND) != EncounterState::DONE)
+                {
+                    summons.DespawnAll();
+                    SummonedRend = false;
+                    me->DespawnOrUnsummon();
+                }
+            }
+            else
+            {
+                //Don't remove aura or anything
+                me->DeleteThreatList();
+                me->CombatStop(true);
+                me->LoadCreaturesAddon();
+                me->SetLootRecipient(NULL);
+                me->ResetPlayerDamageReq();
+                me->SetLastDamagedTime(0);
+
+                //heal him up
+                me->SetFullHealth();
             }
         }
 
         void EnterCombat(Unit* /*who*/) override
         {
             _EnterCombat();
+
+            //set zone combat to prevent vanishes or deaths from reseting the encounter
+            me->SetInCombatWithZone();
+
+            //Force inprogress even if we already are. There could have been a wipe
+            instance->SetBossState(DATA_GYTH, EncounterState::IN_PROGRESS);
+
+            //cancel the despawn event
+            events.CancelEvent(EVENT_DESPAWN_ON_NO_ENEMY_FOUND);
 
             events.ScheduleEvent(EVENT_CORROSIVE_ACID, urand(8000, 16000));
             events.ScheduleEvent(EVENT_FREEZE, urand(8000, 16000));
@@ -87,7 +116,12 @@ public:
 
         void JustDied(Unit* /*killer*/) override
         {
-            instance->SetBossState(DATA_GYTH, DONE);
+            instance->SetBossState(DATA_GYTH, EncounterState::DONE);
+        }
+
+        void JustSummoned(Creature* summon) override
+        {
+            summons.Summon(summon);
         }
 
         void SetData(uint32 /*type*/, uint32 data) override
@@ -105,9 +139,9 @@ public:
         void UpdateAI(uint32 diff) override
         {
 
-            if (!SummonedRend && HealthBelowPct(5))
+            if (!SummonedRend && HealthBelowPct(25))
             {
-                DoCast(me, SPELL_SUMMON_REND);
+                DoCast(me, SPELL_SUMMON_REND, true); //if you don't trigger than he won't summon during a cast
                 me->RemoveAura(SPELL_REND_MOUNTS);
                 SummonedRend = true;
             }
@@ -130,6 +164,12 @@ public:
                             break;
                         case EVENT_SUMMONED_2:
                             me->GetMotionMaster()->MovePath(GYTH_PATH_1, false);
+
+                            //prepare a despawn event if Gyth isn't 
+                            events.ScheduleEvent(EVENT_DESPAWN_ON_NO_ENEMY_FOUND, Seconds(40));
+                            break;
+                        case EVENT_DESPAWN_ON_NO_ENEMY_FOUND:
+                            this->EnterEvadeMode(EvadeReason::EVADE_REASON_NO_HOSTILES);
                             break;
                         default:
                             break;

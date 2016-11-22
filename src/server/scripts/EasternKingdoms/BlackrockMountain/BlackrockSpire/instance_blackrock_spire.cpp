@@ -160,13 +160,11 @@ public:
                     break;
                 case GO_PORTCULLIS_ACTIVE:
                     guidMap[go->GetEntry()] = go->GetGUID();
-                    if (GetBossState(DATA_GYTH) == DONE)
-                        HandleGameObject(ObjectGuid::Empty, true, go);
+                    HandleGameObject(ObjectGuid::Empty, true, go);
                     break;
                 case GO_PORTCULLIS_TOBOSSROOMS:
                     guidMap[go->GetEntry()] = go->GetGUID();
-                    if (GetBossState(DATA_GYTH) == DONE)
-                        HandleGameObject(ObjectGuid::Empty, true, go);
+                    HandleGameObject(ObjectGuid::Empty, false, go); //keep this door closed until the Rend event is completed.
                     break;
                 default:
                     break;
