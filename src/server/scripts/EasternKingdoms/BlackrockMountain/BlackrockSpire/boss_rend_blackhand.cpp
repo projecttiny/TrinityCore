@@ -106,7 +106,7 @@ enum Events
     EVENT_MORTAL_STRIKE             = 32,
 };
 
-float waveTimeMultiplier = 1.0f;
+float waveTimeMultiplier = 0.01f;
 
 class boss_rend_blackhand : public CreatureScript
 {
