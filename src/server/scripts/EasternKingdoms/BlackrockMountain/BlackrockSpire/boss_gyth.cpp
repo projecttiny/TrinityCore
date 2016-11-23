@@ -65,6 +65,13 @@ public:
             isJustSpawned = false;
         }
 
+		void Reset() override
+		{
+			BossAI::Reset();
+
+			me->GetMotionMaster()->MoveTargetedHome();
+		}
+
         void EnterEvadeMode(EvadeReason why) override
         {
             //reset the event if it's inprogress and if Gyth evaded because it couldn't find players.
