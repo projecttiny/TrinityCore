@@ -19,6 +19,7 @@
 #include "ScriptMgr.h"
 #include "ScriptedCreature.h"
 #include "blackrock_spire.h"
+#include "Player.h"
 
 enum Spells
 {
@@ -29,13 +30,29 @@ enum Spells
     SPELL_FIREBALL                  = 16788
 };
 
+enum Say
+{
+    SAY_BLACKHAND_DOOMED = 0
+};
+
 enum Events
 {
     EVENT_FLAME_BREAK              = 1,
     EVENT_IMMOLATE                 = 2,
     EVENT_TERRIFYING_ROAR          = 3,
     EVENT_BERSERKER_CHARGE         = 4,
-    EVENT_FIRE_BALL                = 5
+    EVENT_FIRE_BALL                = 5,
+    EVENT_EXIT_CAVE_MOVEMENT       = 6,
+    EVENT_ENTER_BEAST_ROOM         = 7
+};
+
+enum PreEventFlags
+{
+    BEAST_NONE = 0,
+    BEAST_HAS_SCARED_BLACKHAND_ELITES = 1 << 0,
+    BEAST_HAS_KILLED_BLACKHAND_ELITES = 1 << 1,
+    BEAST_HAS_EXITED_THE_CAVE = 1 << 2
+
 };
 
 class boss_the_beast : public CreatureScript
@@ -50,11 +67,23 @@ public:
 
     struct boss_thebeastAI : public BossAI
     {
-        boss_thebeastAI(Creature* creature) : BossAI(creature, DATA_THE_BEAST) { }
+        PreEventFlags preEventFlags;
+
+        boss_thebeastAI(Creature* creature) : BossAI(creature, DATA_THE_BEAST) 
+        {
+            preEventFlags = PreEventFlags::BEAST_NONE;
+        }
 
         void Reset() override
         {
             _Reset();
+
+            //Walk back home
+            me->GetMotionMaster()->MoveTargetedHome();
+
+            //If we haven't killed the elites then reset the scare flag
+            if ((preEventFlags & PreEventFlags::BEAST_HAS_KILLED_BLACKHAND_ELITES) == 0)
+                preEventFlags = (PreEventFlags)(preEventFlags & ~PreEventFlags::BEAST_HAS_SCARED_BLACKHAND_ELITES);
         }
 
         void EnterCombat(Unit* /*who*/) override
@@ -67,6 +96,43 @@ public:
             events.ScheduleEvent(EVENT_TERRIFYING_ROAR, Seconds(23));
         }
 
+        void SetData(uint32 eventId, uint32 /*data*/) override
+        {
+            if (eventId == EVENT_EXIT_CAVE_MOVEMENT && (preEventFlags & PreEventFlags::BEAST_HAS_EXITED_THE_CAVE) == 0)
+            {
+                me->GetMotionMaster()->MovePath(NPC_THE_BEAST * 10, false);
+                preEventFlags = (PreEventFlags)(preEventFlags | PreEventFlags::BEAST_HAS_EXITED_THE_CAVE);
+
+                //The Beast should also kill everyone around him.
+                //Find all the Blackhand Elites nearby.
+                std::vector<Creature*> creatureList;
+                creatureList.reserve(2);
+                GetCreatureListWithEntryInGrid(creatureList, me, NPC_BLACKHAND_ELITE, 20.0f);
+
+                if (creatureList.size() > 0)
+                {
+                    //Kill them all
+                    for (Creature* c : creatureList)
+                    {
+                        me->Kill(c, false);
+                    }
+                }
+            }
+            else if (eventId == EVENT_ENTER_BEAST_ROOM && (preEventFlags & PreEventFlags::BEAST_HAS_SCARED_BLACKHAND_ELITES) == 0) //if the beast hasn't scared them
+            {
+                preEventFlags = (PreEventFlags)(preEventFlags | PreEventFlags::BEAST_HAS_SCARED_BLACKHAND_ELITES);
+
+                //Find all the Blackhand Elites nearby.
+                std::vector<Creature*> creatureList;
+                creatureList.reserve(2);
+                GetCreatureListWithEntryInGrid(creatureList, me, NPC_BLACKHAND_ELITE, 20.0f);
+
+                //Scare them
+                if (creatureList.size() > 0)
+                    creatureList[0]->AI()->Talk(SAY_BLACKHAND_DOOMED);  //Have first one shout. Don't kill them right away so they can speak
+            }
+        }
+
         void JustDied(Unit* /*killer*/) override
         {
             _JustDied();
@@ -75,7 +141,9 @@ public:
         void UpdateAI(uint32 diff) override
         {
             if (!UpdateVictim())
+            {
                 return;
+            }        
 
              events.Update(diff);
 
@@ -92,7 +160,7 @@ public:
                         break;
                     case EVENT_IMMOLATE:
                         if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 100, true, -1 * SPELL_IMMOLATE)) //cast immolate on a target without debuff
-                            DoCast(target, SPELL_IMMOLATE);
+                            DoCast(target, SPELL_IMMOLATE, (TriggerCastFlags)TriggerCastFlags::TRIGGERED_IGNORE_POWER_AND_REAGENT_COST);
                         events.ScheduleEvent(EVENT_IMMOLATE, Seconds(8));
                         break;
                     case EVENT_TERRIFYING_ROAR:
@@ -100,32 +168,76 @@ public:
                         events.ScheduleEvent(EVENT_TERRIFYING_ROAR, Seconds(20));
                         break;
                     case EVENT_BERSERKER_CHARGE:
-                        if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 38, true))
+                        if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, [](Unit* u) { return u && u->ToPlayer() && u->IsWithinCombatRange(u, 38) && u->IsWithinLOSInMap(u); }))
                         {
                             //randomly charge a target within 38 yards
                             me->CastSpell(target, SPELL_BESERKER_CHARGE);
                         }
-                        events.ScheduleEvent(EVENT_BERSERKER_CHARGE, urand(3000, 4500));
+                        events.ScheduleEvent(EVENT_BERSERKER_CHARGE, urand(6000, 8000));
                         break;
                     case EVENT_FIRE_BALL:
-                        //Videos show he hardcasts it. Don't trigger but ignore mana cost
-                        if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 38, true))
-                        {
-                            me->CastSpell(target, SPELL_FIREBALL, (TriggerCastFlags)(TriggerCastFlags::TRIGGERED_IGNORE_AURA_INTERRUPT_FLAGS | TriggerCastFlags::TRIGGERED_IGNORE_POWER_AND_REAGENT_COST));
+                        if (Unit* target = SelectTarget(SELECT_TARGET_RANDOM, 0, 38.0f))
+                        { 
+                            me->CastSpell(target, SPELL_FIREBALL);
                         }
-                        events.ScheduleEvent(EVENT_FIRE_BALL, urand(5000, 7000));
+                        events.ScheduleEvent(EVENT_FIRE_BALL, urand(8500, 10000));
                         break;
                 }
 
                 if (me->HasUnitState(UNIT_STATE_CASTING))
                     return;
             }
+
             DoMeleeAttackIfReady();
         }
     };
 };
 
+// 2066 Trigger for The Beast pathing event.
+class at_nearby_the_beast_cave_enterance : public AreaTriggerScript
+{
+public:
+    at_nearby_the_beast_cave_enterance() : AreaTriggerScript("at_nearby_the_beast_cave_enterance") { }
+
+    bool OnTrigger(Player* player, const AreaTriggerEntry* /*at*/) override
+    {
+        if (player->IsAlive())
+            if (InstanceScript* instance = player->GetInstanceScript())
+                if (Creature* beast = ObjectAccessor::GetCreature(*player, instance->GetGuidData(DATA_THE_BEAST)))
+                {
+                    beast->AI()->SetData(EVENT_EXIT_CAVE_MOVEMENT, 0);
+
+                    return true;
+                }
+
+        return false;
+    }
+};
+
+// 2067 Trigger for The Beast pathing event.
+class at_enter_the_beast_room : public AreaTriggerScript
+{
+public:
+    at_enter_the_beast_room() : AreaTriggerScript("at_enter_the_beast_room") { }
+
+    bool OnTrigger(Player* player, const AreaTriggerEntry* /*at*/) override
+    {
+        if (player->IsAlive())
+            if (InstanceScript* instance = player->GetInstanceScript())
+                if (Creature* beast = ObjectAccessor::GetCreature(*player, instance->GetGuidData(DATA_THE_BEAST)))
+                {
+                    beast->AI()->SetData(EVENT_ENTER_BEAST_ROOM, 0);
+
+                    return true;
+                }
+
+        return false;
+    }
+};
+
 void AddSC_boss_thebeast()
 {
     new boss_the_beast();
+    new at_nearby_the_beast_cave_enterance();
+    new at_enter_the_beast_room();
 }

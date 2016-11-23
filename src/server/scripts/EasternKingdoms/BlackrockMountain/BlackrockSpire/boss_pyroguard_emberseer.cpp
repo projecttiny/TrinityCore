@@ -526,7 +526,7 @@ public:
         }
 
         private:
-			EventMap _events;
+            EventMap _events;
             IncarceratorState currentState;
     };
 
