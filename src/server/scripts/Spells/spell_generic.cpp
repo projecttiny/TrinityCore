@@ -4351,6 +4351,39 @@ class spell_gen_pony_mount_check : public SpellScriptLoader
         }
 };
 
+// 16805 - Conflagration (Drakkisath, Razorgore)
+class spell_gen_boss_conflagration : public SpellScriptLoader
+{
+public:
+    spell_gen_boss_conflagration() : SpellScriptLoader("spell_gen_boss_conflagration") { }
+
+    class spell_gen_boss_conflagration_AuraScript : public AuraScript
+    {
+        PrepareAuraScript(spell_gen_boss_conflagration_AuraScript);
+
+        void OnConflagAuraApplied(AuraEffect const* aurEff, AuraEffectHandleModes mode)
+        {
+            GetTarget()->getHostileRefManager().addTempThreat(-9000000.0f, true);
+        }
+
+        void OnConflagAuraRemoved(AuraEffect const* aurEff, AuraEffectHandleModes mode)
+        {
+            GetTarget()->getHostileRefManager().addTempThreat(-9000000.0f, false);
+        }
+
+        void Register() override
+        {
+            this->AfterEffectApply += AuraEffectApplyFn(spell_gen_boss_conflagration_AuraScript::OnConflagAuraApplied, EFFECT_1, SPELL_AURA_MOD_CONFUSE, AuraEffectHandleModes::AURA_EFFECT_HANDLE_REAL);
+            this->AfterEffectRemove += AuraEffectRemoveFn(spell_gen_boss_conflagration_AuraScript::OnConflagAuraRemoved, EFFECT_1, SPELL_AURA_MOD_CONFUSE, AuraEffectHandleModes::AURA_EFFECT_HANDLE_REAL);
+        }
+    };
+
+    AuraScript* GetAuraScript() const override
+    {
+        return new spell_gen_boss_conflagration_AuraScript();
+    }
+};
+
 void AddSC_generic_spell_scripts()
 {
     new spell_gen_absorb0_hitlimit1();
@@ -4447,4 +4480,5 @@ void AddSC_generic_spell_scripts()
     new spell_gen_landmine_knockback_achievement();
     new spell_gen_clear_debuffs();
     new spell_gen_pony_mount_check();
+    new spell_gen_boss_conflagration();
 }
