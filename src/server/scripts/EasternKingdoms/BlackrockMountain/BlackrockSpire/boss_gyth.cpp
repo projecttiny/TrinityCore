@@ -65,12 +65,12 @@ public:
             isJustSpawned = false;
         }
 
-		void Reset() override
-		{
-			BossAI::Reset();
+        void Reset() override
+        {
+            BossAI::Reset();
 
-			me->GetMotionMaster()->MoveTargetedHome();
-		}
+            me->GetMotionMaster()->MoveTargetedHome();
+        }
 
         void EnterEvadeMode(EvadeReason why) override
         {
@@ -124,24 +124,22 @@ public:
         //Implement this so that we can summon Rend should we be damaged to the point of death before getting the summon off
         void DamageTaken(Unit* attacker, uint32& damage) override 
         {
-			if (me->GetHealth() <= damage)
-			{
-				Beep(700, 1000);
+            if (me->GetHealth() <= damage)
+            {
+                if(!SummonedRend)
+                    SummonRend();
+                else
+                    if (instance->GetBossState(DATA_WARCHIEF_REND_BLACKHAND) != EncounterState::IN_PROGRESS
+                        && instance->GetBossState(DATA_WARCHIEF_REND_BLACKHAND) != EncounterState::DONE) //if rend isn't in progress or done we should stall
+                    {
+                        //Basically make him immume to damage until Rend has spawned
+                        damage = me->GetHealth() - 1;
+                        return;
+                    }
+            }
+                
 
-				if(!SummonedRend)
-					SummonRend();
-				else
-					if (instance->GetBossState(DATA_WARCHIEF_REND_BLACKHAND) != EncounterState::IN_PROGRESS
-						&& instance->GetBossState(DATA_WARCHIEF_REND_BLACKHAND) != EncounterState::DONE) //if rend isn't in progress or done we should stall
-					{
-						//Basically make him immume to damage until Rend has spawned
-						damage = me->GetHealth() - 1;
-						return;
-					}
-			}
-				
-
-			BossAI::DamageTaken(attacker, damage);
+            BossAI::DamageTaken(attacker, damage);
         }
 
         void JustDied(Unit* /*killer*/) override
@@ -166,18 +164,18 @@ public:
             }
         }
 
-		void SummonRend()
-		{
-			DoCast(me, SPELL_SUMMON_REND, true); //if you don't trigger than he won't summon during a cast
-			me->RemoveAura(SPELL_REND_MOUNTS);
-			SummonedRend = true;
-		}
+        void SummonRend()
+        {
+            DoCast(me, SPELL_SUMMON_REND, true); //if you don't trigger than he won't summon during a cast
+            me->RemoveAura(SPELL_REND_MOUNTS);
+            SummonedRend = true;
+        }
 
         void UpdateAI(uint32 diff) override
         {
             if (!SummonedRend && HealthBelowPct(25))
             {
-				SummonRend();
+                SummonRend();
             }
 
             if (!UpdateVictim())
