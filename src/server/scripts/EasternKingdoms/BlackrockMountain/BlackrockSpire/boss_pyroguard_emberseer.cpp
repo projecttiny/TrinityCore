@@ -277,7 +277,7 @@ public:
                                 if (Creature* creature = *itr)
                                 {
                                     //If they aren't ready for the preevent we should wait
-                                    if (!creature->AI()->GetData(0) == IncarceratorState::STATE_IS_READY_TO_BEGIN_PREEVENT)
+                                    if (creature->AI()->GetData(0) != IncarceratorState::STATE_IS_READY_TO_BEGIN_PREEVENT)
                                         return;
                                 }
 
@@ -429,7 +429,7 @@ public:
         {
             if (data == 1 && value == 1)
             {
-                me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC|UNIT_FLAG_IMMUNE_TO_NPC|UNIT_FLAG_NOT_SELECTABLE|UNIT_FLAG_NON_ATTACKABLE);
+                me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC | UNIT_FLAG_IMMUNE_TO_NPC | UNIT_FLAG_NON_ATTACKABLE);
                 me->InterruptSpell(CURRENT_CHANNELED_SPELL);
                 _events.CancelEvent(EVENT_ENCAGED_EMBERSEER);
 
@@ -443,7 +443,7 @@ public:
 
             if (data == 1 && value == 2)
             {
-                me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC | UNIT_FLAG_IMMUNE_TO_NPC | UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_NON_ATTACKABLE);
+                me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IMMUNE_TO_PC | UNIT_FLAG_IMMUNE_TO_NPC | UNIT_FLAG_NON_ATTACKABLE);
                 _events.ScheduleEvent(EVENT_ENCAGED_EMBERSEER, 5000);
             }
         }
