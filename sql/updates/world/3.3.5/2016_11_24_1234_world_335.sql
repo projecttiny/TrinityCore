@@ -8,7 +8,7 @@ UPDATE `gameobject_template` SET `ScriptName`='go_dragonspire_hall_room_rune' WH
 UPDATE `gameobject_template` SET `ScriptName`='go_dragonspire_hall_room_rune' WHERE `entry`='175199';
 
 -- Removes the static spawn creatures standing inside the Rend gate. This may not be blizzlike but it's easier to deal with.
-DELETE * FROM creature where guid in (23,21,20,22);
+DELETE FROM creature where guid in (23,21,20,22);
 
 -- These are the summon groups for the Rend event
 DELETE FROM creature_summon_groups WHERE summonerId = 10429;
