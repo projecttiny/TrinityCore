@@ -44,6 +44,7 @@ INSERT INTO `conditions` (`SourceTypeOrReferenceId`, `SourceGroup`, `SourceEntry
 INSERT INTO `conditions` (`SourceTypeOrReferenceId`, `SourceGroup`, `SourceEntry`, `SourceId`, `ElseGroup`, `ConditionTypeOrReference`, `ConditionTarget`, `ConditionValue1`, `ConditionValue2`, `ConditionValue3`, `NegativeCondition`, `ErrorType`, `ErrorTextId`, `ScriptName`, `Comment`) VALUES ('17', '0', '16637', '0', '0', '29', '0', '10447', '19', '0', '0', '0', '0', '', 'Prevents casting of Mend Dragon outside of range of a Dragonspawn.');
 
 -- Adds scripts for the area triggers found in The Beast's room
+DELETE FROM `areatrigger_scripts` WHERE entry = '2066' OR entry = '2067';
 INSERT INTO `areatrigger_scripts` (`entry`, `ScriptName`) VALUES ('2066', 'at_nearby_the_beast_cave_enterance');
 INSERT INTO `areatrigger_scripts` (`entry`, `ScriptName`) VALUES ('2067', 'at_enter_the_beast_room');
 
@@ -67,7 +68,7 @@ INSERT INTO `waypoint_data` (`id`, `point`, `position_x`, `position_y`, `positio
 ('104300', '15', '55.509', '-534.937', '110.941', '0', '0', '0', '0', '100', '0');
 
 -- Adds The Beast blackhand elites speech
-DELETE FROM `creature_test` WHERE entry = '10317';
+DELETE FROM `creature_text` WHERE entry = '10317';
 INSERT INTO `creature_text` (`entry`, `groupid`, `id`, `text`, `type`, `language`, `probability`, `emote`, `duration`, `sound`, `BroadcastTextId`, `TextRange`, `comment`) VALUES ('10317', '0', '0', 'We\'re doomed!', '14', '0', '0', '0', '0', '0', '5622', '0', 'UBRS - The Beast tramples the elites causing them to shout about their doom.');
 
 
@@ -78,5 +79,5 @@ DELETE FROM `smart_scripts` WHERE `entryorguid`='10814' and`source_type`='0' and
 UPDATE `creature_template` SET `AIName`='', `ScriptName`='npc_drakkisath_chromatic_elite_guard' WHERE `entry`='10814';
 
 -- Adds an aura script for the spell conflaguration that handles the threat drop mechanic
-DELETE FROM `spell_script_name` WHERE spell_id = '16805';
+DELETE FROM `spell_script_names` WHERE spell_id = '16805';
 INSERT INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES ('16805', 'spell_gen_boss_conflagration');
