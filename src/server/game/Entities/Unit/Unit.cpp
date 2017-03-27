@@ -13354,15 +13354,11 @@ void Unit::_EnterVehicle(Vehicle* vehicle, int8 seatId, AuraApplication const* a
         {
             Unit* turret = vehicle->GetPassenger(7); //the turret should be sitting in the 7th passenger seat
 
-            //Only let the player enter if the gunner seat isn't filled
-            if (turret->GetVehicleKit()->HasEmptySeat(0))
-            {
-                //This casts the http://www.wowhead.com/spell=65031/ride-vehicle-scales-w-gear
-                //spell that interacting with Ulduar vechicles is suppose to cast
-                //Though for the turret it probably should cast based on the drivers gear? This
-                //is good enough for now though.
-                CastSpell(turret, 65031, GetVehicleKit() ? TRIGGERED_IGNORE_CASTER_MOUNTED_OR_ON_VEHICLE : TRIGGERED_NONE, NULL, NULL, GetGUID());
-            }
+            //This casts the http://www.wowhead.com/spell=65031/ride-vehicle-scales-w-gear
+            //spell that interacting with Ulduar vechicles is suppose to cast
+            //Though for the turret it probably should cast based on the drivers gear? This
+            //is good enough for now though.
+            CastSpell(turret, 65031, GetVehicleKit() ? TRIGGERED_IGNORE_CASTER_MOUNTED_OR_ON_VEHICLE : TRIGGERED_NONE, NULL, NULL, GetGUID());
         }
     }
     else
