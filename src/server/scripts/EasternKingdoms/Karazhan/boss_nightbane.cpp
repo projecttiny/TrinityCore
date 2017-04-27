@@ -436,9 +436,50 @@ public:
     }
 };
 
+//Spell 31116 Summon Nightbane
+class spell_kara_summon_nightbane : public SpellScriptLoader
+{
+public:
+
+    spell_kara_summon_nightbane() : SpellScriptLoader("spell_kara_summon_nightbane") { }
+
+    class spell_kara_summon_nightbane_SpellScript : public SpellScript
+    {
+        PrepareSpellScript(spell_kara_summon_nightbane_SpellScript);
+
+        void BroadcastSummon()
+        {
+            //Basically the Blackened Urn GO implementation from 3.3.5
+            InstanceScript* instance = GetCaster()->GetInstanceScript();
+
+            //TODO: Only checking inprogress means multiple summons spells can go off before she lands and engages
+            if (!instance || instance->GetBossState(DATA_NIGHTBANE) == DONE || instance->GetBossState(DATA_NIGHTBANE) == IN_PROGRESS)
+                return;
+
+            //Else if it's not done or in progress
+            if (Creature* nightbane = ObjectAccessor::GetCreature(*GetCaster(), instance->GetGuidData(DATA_NIGHTBANE)))
+            {
+                nightbane->AI()->DoAction(ACTION_SUMMON);
+            }
+        }
+
+        void Register()
+        {
+            //hook to a summon event after cast
+            AfterCast += SpellCastFn(spell_kara_summon_nightbane_SpellScript::BroadcastSummon);
+        }
+    };
+
+    SpellScript* GetSpellScript() const
+    {
+        return new spell_kara_summon_nightbane_SpellScript();
+    }
+};
+
 void AddSC_boss_nightbane()
 {
     new boss_nightbane();
     new spell_rain_of_bones();
     new go_blackened_urn();
+    new spell_kara_summon_nightbane();
 }
